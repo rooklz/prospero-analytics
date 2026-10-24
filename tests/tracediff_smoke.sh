@@ -2,7 +2,7 @@
 # tracediff_smoke.sh — sanity check for host/tracediff.py against synthetic traces.
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 

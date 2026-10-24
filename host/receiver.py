@@ -24,6 +24,8 @@ import time
 
 import tracefile
 
+MAX_LINE = 1 << 20     # an event is ~300 bytes; anything longer is a broken peer
+
 class Target:
     def __init__(self, sock, addr, outdir, show, inc_mod, exc_mod, match):
         self.sock = sock
@@ -104,6 +106,9 @@ class Target:
                     raw, buf = buf.split(b"\n", 1)
                     if raw:
                         self.handle(raw.decode("utf-8", "replace"))
+                if len(buf) > MAX_LINE:
+                    print(f"[!] {self.addr[0]}: line over {MAX_LINE} bytes, discarding it")
+                    buf = b""
         except OSError:
             pass
         finally:

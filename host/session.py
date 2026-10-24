@@ -45,7 +45,12 @@ def main():
     rx = subprocess.Popen([sys.executable, os.path.join(HERE, "receiver.py"), "--bind", args.bind,
                            "--port", str(args.port), "--out", traces, "-q"],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    print(rx.stdout.readline().rstrip(), flush=True)
+    banner = rx.stdout.readline()
+    if not banner.startswith("[*] listening"):
+        rx.wait()
+        print(f"session: receiver did not start:\n{banner}{rx.stdout.read()}", file=sys.stderr)
+        return 2
+    print(banner.rstrip(), flush=True)
     closed = []
     def collect():
         for line in rx.stdout:

@@ -2,7 +2,7 @@
 # reports_smoke.sh — tracedb reports, dashboard, summarize --json, tracediff --normalize.
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 DB="$WORK/t.db"

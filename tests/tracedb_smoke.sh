@@ -2,7 +2,7 @@
 # tracedb_smoke.sh — import synthetic captures into SQLite and query them.
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 DB="$WORK/t.db"
