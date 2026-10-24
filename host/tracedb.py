@@ -245,6 +245,99 @@ def cmd_sql(args):
     cols = [d[0] for d in cur.description or []]
     emit(args, cols, cur.fetchall())
 
+def cmd_common(args):
+    db = open_ro(args.db)
+    where, params = _capture_filter(args.capture)
+    n = db.execute(f"SELECT count(*) FROM captures {where.replace('capture_id', 'id')}",
+                   params).fetchone()[0]
+    cols = ["mod", "fn", "calls", "min_per_capture"]
+    rows = db.execute(
+        f"SELECT mod, fn, sum(calls), min(calls) FROM functions {where} "
+        "GROUP BY mod, fn HAVING count(*) = ? ORDER BY mod, fn",
+        params + [n]).fetchall()
+    emit(args, cols, rows)
+
+def cmd_fwdiff(args):
+    db = open_ro(args.db)
+    cols = ["side", "mod", "fn", "calls", "captures"]
+    q = ("SELECT ?, k.mod, k.fn, count(*), count(DISTINCT k.capture_id) "
+         "FROM calls k JOIN captures c ON c.id = k.capture_id WHERE c.fw = ? "
+         "AND NOT EXISTS (SELECT 1 FROM calls k2 JOIN captures c2 ON c2.id = k2.capture_id "
+         "WHERE c2.fw = ? AND k2.mod = k.mod AND k2.fn = k.fn) "
+         "GROUP BY k.mod, k.fn ORDER BY k.mod, k.fn")
+    rows = (db.execute(q, ("+" + args.new, args.new, args.base)).fetchall() +
+            db.execute(q, ("-" + args.base, args.base, args.new)).fetchall())
+    emit(args, cols, rows)
+
+def load_nids(path):
+    """Read `module function nid` lines (the agent's data/nids.txt format)."""
+    known = []
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            parts = line.split("#", 1)[0].split()
+            if len(parts) >= 2:
+                known.append((parts[0], parts[1]))
+    return known
+
+def cmd_coverage(args):
+    db = open_ro(args.db)
+    known = load_nids(args.nids)
+    where, params = _capture_filter(args.capture)
+    seen = set(db.execute(f"SELECT DISTINCT mod, fn FROM calls {where}", params).fetchall())
+    per_mod = {}
+    for mod, fn in known:
+        m = per_mod.setdefault(mod, [0, 0, []])
+        m[0] += 1
+        if (mod, fn) in seen:
+            m[1] += 1
+        else:
+            m[2].append(fn)
+    unnamed = sum(1 for mod, fn in seen if fn.startswith("nid_"))
+    if args.missing:
+        cols = ["mod", "fn"]
+        rows = [(mod, fn) for mod in sorted(per_mod) for fn in sorted(per_mod[mod][2])]
+    else:
+        cols = ["mod", "known", "touched", "pct"]
+        rows = [(mod, k, t, round(100 * t / k, 1)) for mod, (k, t, _) in sorted(per_mod.items())]
+    emit(args, cols, rows)
+    if args.json != "-":
+        total = sum(v[0] for v in per_mod.values())
+        hit = sum(v[1] for v in per_mod.values())
+        print(f"\n{hit}/{total} known functions touched"
+              f"{f', {unnamed} unnamed NIDs seen' if unnamed else ''}")
+
+def cmd_args(args):
+    db = open_ro(args.db)
+    target = "(mod || '.' || fn)" if "." in args.name else "fn"
+    where = f"WHERE {target} GLOB ?"
+    params = [args.name]
+    if args.capture:
+        where += f" AND capture_id IN ({','.join('?' * len(args.capture))})"
+        params += args.capture
+    total, threads, callers = db.execute(
+        f"SELECT count(*), count(DISTINCT tid), count(DISTINCT capture_id) FROM calls {where}",
+        params).fetchone()
+    cols = ["slot", "distinct", "min", "max", "top_values"]
+    rows = []
+    for slot in ["a0", "a1", "a2", "a3", "a4", "a5", "ret"]:
+        vals = db.execute(
+            f"SELECT {slot}, count(*) FROM calls {where} AND {slot} IS NOT NULL "
+            f"GROUP BY {slot} ORDER BY count(*) DESC, {slot}", params).fetchall()
+        if not vals:
+            continue
+        nums = []
+        for v, _ in vals:
+            try:
+                nums.append(int(v, 16))
+            except ValueError:
+                pass
+        top = ", ".join(f"{v}x{n}" for v, n in vals[:args.top])
+        rows.append((slot, len(vals), hex(min(nums)) if nums else None,
+                     hex(max(nums)) if nums else None, top))
+    if args.json != "-":
+        print(f"{total} calls matching {args.name!r} from {threads} threads in {callers} captures\n")
+    emit(args, cols, rows)
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -271,6 +364,23 @@ def main():
     p.add_argument("--top", type=int, default=50)
     p = query("who", cmd_who, "which captures call a function, and how often")
     p.add_argument("name", help="fn or mod.fn; shell-style * ? [..] patterns allowed")
+    p = query("common", cmd_common, "functions every capture calls (the shared API surface)")
+    p.add_argument("--capture", type=int, action="append", default=[], metavar="ID",
+                   help="only these captures (repeatable)")
+    p = query("fwdiff", cmd_fwdiff,
+              "functions called on one firmware's captures but never on the other's")
+    p.add_argument("base", help="baseline fw string, as in hello (e.g. 13.40)")
+    p.add_argument("new", help="comparison fw string")
+    p = query("coverage", cmd_coverage,
+              "share of a known-NID list (module function nid lines) that captures touched")
+    p.add_argument("nids", help="NID list, e.g. ProsperoTrace agent/data/nids.txt")
+    p.add_argument("--capture", type=int, action="append", default=[], metavar="ID")
+    p.add_argument("--missing", action="store_true", help="list the untouched functions instead")
+    p = query("args", cmd_args,
+              "argument patterns of a function: distinct values, ranges and most common values")
+    p.add_argument("name", help="fn or mod.fn; glob patterns allowed")
+    p.add_argument("--capture", type=int, action="append", default=[], metavar="ID")
+    p.add_argument("--top", type=int, default=5, help="most common values shown per slot")
     p = query("sql", cmd_sql, "run a read-only SQL query against the database")
     p.add_argument("query")
 
