@@ -17,10 +17,17 @@ kernel-facing code — pure data engineering on trace output.
 | `host/tracediff.py` | Compare two captures: functions that surfaced, disappeared, or changed rate |
 | `host/tracedb.py` | Import many captures into one SQLite database; query who calls what across runs |
 | `host/dashboard.py` | Static HTML report from a database: per-run timelines, capture x module matrix |
+| `host/validate.py` | Check captures against `docs/EVENT_FORMAT.md` (the agent/host contract) |
+| `host/session.py` | One session end to end: receive, validate, import, render, optional baseline diff |
+
+Start with [docs/GUIDE.md](docs/GUIDE.md) for the whole pipeline, console to
+dashboard.
 
 ## Quickstart
 
 ```sh
+python3 host/session.py --out session/ --captures 1        # receive+validate+import+report
+python3 host/validate.py traces/trace-*.jsonl
 python3 host/receiver.py --port 9029 --out traces/
 python3 host/summarize.py traces/trace-1234-*.jsonl
 python3 host/tracediff.py traces/before.jsonl traces/after.jsonl
@@ -60,7 +67,7 @@ tests/run.sh
 
 Drives smoke checks against synthetic captures: `tracediff` output, malformed-line
 tolerance in `summarize`/`tracediff`, the receiver over loopback, and
-`tracedb` import plus every report, the dashboard, and the `--json` /
+`tracedb` import plus every report, the dashboard, `validate` and `session`, and the `--json` /
 `--normalize` flags. GitHub Actions runs them on Linux and macOS with
 Python 3.10 and 3.14.
 

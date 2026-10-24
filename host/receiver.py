@@ -128,6 +128,7 @@ def main():
     ap.add_argument("--match", default="", help="function-name substring filter (display only)")
     ap.add_argument("-q", "--quiet", action="store_true", help="record only, no live display")
     args = ap.parse_args()
+    sys.stdout.reconfigure(line_buffering=True)   # live through pipes and tee
 
     os.makedirs(args.out, exist_ok=True)
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
