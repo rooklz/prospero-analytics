@@ -35,7 +35,7 @@ import sys
 
 import tracefile
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS captures (
@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS captures (
     pid         INTEGER,
     title       TEXT,
     fw          TEXT,
+    events      INTEGER NOT NULL DEFAULT 0,
     calls       INTEGER NOT NULL,
     drops       INTEGER NOT NULL,
     skipped     INTEGER NOT NULL,
@@ -94,6 +95,10 @@ def open_rw(path):
     if version > SCHEMA_VERSION:
         sys.exit(f"tracedb: {path} has schema v{version}; this tool knows v{SCHEMA_VERSION}")
     db.executescript(SCHEMA)
+    if version < 2:
+        cols = [r[1] for r in db.execute("PRAGMA table_info(captures)")]
+        if "events" not in cols:
+            db.execute("ALTER TABLE captures ADD COLUMN events INTEGER NOT NULL DEFAULT 0")
     db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return db
 
@@ -116,7 +121,7 @@ def import_capture(db, path):
         return "unchanged", row[0], None
     old = db.execute("SELECT id FROM captures WHERE path = ?", (path,)).fetchall()
 
-    stats = {"calls": 0, "drops": 0, "skipped": 0, "hellos": 0}
+    stats = {"calls": 0, "drops": 0, "skipped": 0, "hellos": 0, "events": 0}
     hello = {}
     drops = []
 
@@ -127,6 +132,7 @@ def import_capture(db, path):
                 if raw.strip():
                     stats["skipped"] += 1
                 continue
+            stats["events"] += 1
             t = ev.get("type")
             if t == "call":
                 args = ev.get("args")
@@ -155,10 +161,10 @@ def import_capture(db, path):
         db.executemany("INSERT INTO calls VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", calls(cid))
         db.executemany("INSERT INTO drops VALUES (?,?,?)", drops)
         db.execute(
-            "UPDATE captures SET pid = ?, title = ?, fw = ?, calls = ?, drops = ?, skipped = ? "
-            "WHERE id = ?",
+            "UPDATE captures SET pid = ?, title = ?, fw = ?, events = ?, calls = ?, "
+            "drops = ?, skipped = ? WHERE id = ?",
             (_int(hello.get("pid")), _str(hello.get("title")), _str(hello.get("fw")),
-             stats["calls"], stats["drops"], stats["skipped"], cid))
+             stats["events"], stats["calls"], stats["drops"], stats["skipped"], cid))
     return ("replaced" if old else "imported"), cid, stats
 
 def emit(args, cols, rows):
@@ -205,7 +211,7 @@ def cmd_import(args):
 
 def cmd_captures(args):
     db = open_ro(args.db)
-    cols = ["id", "pid", "title", "fw", "calls", "drops", "skipped", "path"]
+    cols = ["id", "pid", "title", "fw", "events", "calls", "drops", "skipped", "path"]
     rows = db.execute(f"SELECT {', '.join(cols)} FROM captures ORDER BY id").fetchall()
     emit(args, cols, rows)
 

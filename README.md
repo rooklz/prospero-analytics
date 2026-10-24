@@ -23,6 +23,10 @@ kernel-facing code — pure data engineering on trace output.
 | `host/dashboard.py` | Static HTML report from a database: per-run timelines, capture x module matrix |
 | `host/validate.py` | Check captures against `docs/EVENT_FORMAT.md` (the agent/host contract) |
 | `host/session.py` | One session end to end: receive, validate, import, render, optional baseline diff |
+| `host/catalogue.py` | Keep the corpus: import/list/export captures with filters and an `index.json` |
+| `host/priority.py` | Coverage of a declared-function manifest + ranked implementation backlog (`--markdown`) |
+| `host/parity.py` | Console-vs-desktop parity: missing/extra/drifted/matches worklist for a compatibility layer |
+| `host/coveragemap.py` | Merge priority reports into one corpus-wide declared→seen matrix |
 
 Start with [docs/GUIDE.md](docs/GUIDE.md) for the whole pipeline, console to
 dashboard.
@@ -50,6 +54,16 @@ python3 host/tracedb.py args traces.db sceKernelOpen         # per-slot distinct
 python3 host/tracedb.py sql traces.db "SELECT fw, count(*) FROM captures GROUP BY fw"
 
 python3 host/dashboard.py traces.db -o report.html           # self-contained page, no scripts
+
+python3 host/catalogue.py import corpus.db traces/*.jsonl     # the corpus as a curated database
+python3 host/catalogue.py list corpus.db --fw 13.40
+python3 host/catalogue.py export corpus.db --title echo --out subset/
+
+python3 host/priority.py traces/*.jsonl --manifest nids.txt                 # coverage + backlog
+python3 host/priority.py traces/*.jsonl --manifest nids.txt --markdown      # implementation table
+python3 host/priority.py traces/*.jsonl --manifest nids.txt --missing       # declared, never seen
+python3 host/parity.py console.jsonl desktop.jsonl                          # missing/extra/drifted
+python3 host/coveragemap.py backlog-*.json                                  # union coverage matrix
 ```
 
 `tracedb` stores `captures` (hello metadata, totals), `calls` (one row per
@@ -78,15 +92,20 @@ Python 3.10 and 3.14.
 ## Status
 
 The roadmap is done: SQLite import and query layer (`tracedb`), dashboard
-(`dashboard.py`), NID coverage (`tracedb coverage`), arg-pattern analysis
-(`tracedb args`), CI, and the console fixture. The fixture lives with the
+(`dashboard.py`), NID coverage (`tracedb coverage`, `priority.py`),
+arg-pattern analysis (`tracedb args`, `priority.py` sketches), the corpus
+(`catalogue.py`), console/desktop parity (`parity.py`), the coverage matrix
+(`coveragemap.py`), CI, and the console fixture. The fixture lives with the
 agent, in ProsperoTrace's `tools/fixture.sh`: it traces a demo payload on a
 real console with this repo's receiver and fails if `tracediff` finds a
 function that surfaced or disappeared against the stored baseline.
 
 The output of these tools is the ground-truth dataset behind
 firmware-compatibility questions (e.g. which API surface a newer title
-needs) and behind validating compatibility-layer library implementations.
+needs) and behind validating compatibility-layer library implementations:
+`priority.py` turns a set of captures plus a manifest of implemented
+functions into a concrete "implement these next" list, and `parity.py` turns
+a console/desktop pair into the exact missing-API worklist.
 
 ## License
 
