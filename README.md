@@ -66,12 +66,12 @@ Python 3.10 and 3.14.
 
 ## Status
 
-The original roadmap is done: SQLite import and query layer (`tracedb`),
-dashboard (`dashboard.py`), NID coverage (`tracedb coverage`), arg-pattern
-analysis (`tracedb args`), and CI. One piece needs hardware and stays
-manual: regenerating fixture captures on a console. Capture with
-`receiver.py`, then compare against a stored baseline with
-`tracediff --normalize` or `tracedb fwdiff`.
+The roadmap is done: SQLite import and query layer (`tracedb`), dashboard
+(`dashboard.py`), NID coverage (`tracedb coverage`), arg-pattern analysis
+(`tracedb args`), CI, and the console fixture. The fixture lives with the
+agent, in ProsperoTrace's `tools/fixture.sh`: it traces a demo payload on a
+real console with this repo's receiver and fails if `tracediff` finds a
+function that surfaced or disappeared against the stored baseline.
 
 The output of these tools is the ground-truth dataset behind
 firmware-compatibility questions (e.g. which API surface a newer title
