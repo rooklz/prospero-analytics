@@ -31,7 +31,8 @@ python3 host/tracediff.py traces/before.jsonl traces/after.jsonl --json diff.jso
 tests/run.sh
 ```
 
-Drives a smoke check of `tracediff` against synthetic captures.
+Drives smoke checks against synthetic captures: `tracediff` output, malformed-line
+tolerance in `summarize`/`tracediff`, and the receiver over loopback.
 
 ## Roadmap
 

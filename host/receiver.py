@@ -9,16 +9,20 @@ server for tracing. Each attached target gets its own output file:
 Live filters reduce console->host traffic client-side only for display; the
 file always gets the full stream. Use the agent-side filters for bandwidth.
 
+If a target reconnects within the same second, the new file gets a -<n>
+suffix instead of being appended to the previous one.
+
 Ctrl+C closes all files and prints a per-target summary.
 """
 import argparse
-import json
 import os
 import signal
 import socket
 import sys
 import threading
 import time
+
+import tracefile
 
 class Target:
     def __init__(self, sock, addr, outdir, show, inc_mod, exc_mod, match):
@@ -38,9 +42,18 @@ class Target:
 
     def open_file(self, hello):
         self.pid = hello.get("pid", "unknown")
-        ts = int(time.time())
-        self.path = os.path.join(self.outdir, f"trace-{self.pid}-{ts}.jsonl")
-        self.fh = open(self.path, "a", buffering=1)
+        # the pid ends up in a path; never let the peer pick the directory
+        tag = str(self.pid) if isinstance(self.pid, int) else "unknown"
+        stem = os.path.join(self.outdir, f"trace-{tag}-{int(time.time())}")
+        for n in range(1000):
+            self.path = f"{stem}.jsonl" if n == 0 else f"{stem}-{n}.jsonl"
+            try:
+                self.fh = open(self.path, "x", encoding="utf-8", buffering=1)
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise OSError(f"no free file name for {stem}.jsonl")
         title = hello.get("title", "?")
         fw = hello.get("fw", "?")
         print(f"[+] {self.addr[0]}:{self.addr[1]} -> pid {self.pid} ({title}, fw {fw}) => {self.path}")
@@ -59,9 +72,8 @@ class Target:
         return True
 
     def handle(self, line):
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
+        ev = tracefile.parse(line)
+        if ev is None:
             print(f"[!] bad line from {self.addr[0]}: {line[:80]!r}")
             return
         if self.fh is None:
@@ -73,8 +85,10 @@ class Target:
         if ev.get("type") == "call":
             self.count += 1
         elif ev.get("type") == "drops":
-            self.drops += int(ev.get("n", 0))
-        if self.show and self.visible(ev):
+            self.drops += ev.get("n", 0)
+            if self.show:
+                print(f"  {'':>8} dropped {ev.get('n', 0)}")
+        if self.show and ev.get("type") == "call" and self.visible(ev):
             slim = {k: v for k, v in ev.items() if k in ("mod", "fn", "args", "ret", "tid")}
             print(f"  {self.count:>8} {slim}")
 
@@ -98,9 +112,15 @@ class Target:
             print(f"[-] {self.addr[0]}:{self.addr[1]} closed "
                   f"({self.count} calls, {self.drops} dropped)")
 
+    def stop(self):
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--port", type=int, default=9029)
+    ap.add_argument("--port", type=int, default=9029, help="TCP port (0 picks a free one)")
     ap.add_argument("--bind", default="0.0.0.0")
     ap.add_argument("--out", default="traces", help="output directory")
     ap.add_argument("--include-module", action="append", default=[])
@@ -114,7 +134,8 @@ def main():
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind((args.bind, args.port))
     srv.listen(8)
-    print(f"[*] listening on {args.bind}:{args.port}, writing to {args.out}/")
+    port = srv.getsockname()[1]
+    print(f"[*] listening on {args.bind}:{port}, writing to {args.out}/", flush=True)
 
     stop = threading.Event()
     def on_sigint(_sig, _frm):
@@ -123,6 +144,7 @@ def main():
         print("\n[*] stopping")
     signal.signal(signal.SIGINT, on_sigint)
 
+    live = []
     while not stop.is_set():
         try:
             sock, addr = srv.accept()
@@ -131,7 +153,15 @@ def main():
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         t = Target(sock, addr, args.out, not args.quiet,
                    set(args.include_module), set(args.exclude_module), args.match)
-        threading.Thread(target=t.run, daemon=True).start()
+        th = threading.Thread(target=t.run, daemon=True)
+        th.start()
+        live = [(t2, th2) for t2, th2 in live if th2.is_alive()] + [(t, th)]
+
+    # wake every reader so each one closes its file and prints its summary
+    for t, _ in live:
+        t.stop()
+    for _, th in live:
+        th.join(timeout=2)
 
 if __name__ == "__main__":
     main()

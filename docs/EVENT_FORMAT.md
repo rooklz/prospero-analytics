@@ -47,4 +47,7 @@ Consumers should treat `drops` as "the picture is incomplete".
 
 - Keys are stable; new keys may be added.
 - `args` stays six entries; unknown extras are ignored by tools.
-- Tools must tolerate malformed lines (skip-and-continue), not abort.
+- Tools must tolerate malformed lines (skip-and-continue), not abort. A line
+  is malformed if it is not a JSON object, or if a stable key has the wrong
+  type: `seq`/`n` not a non-negative integer, `mod`/`fn` not a string.
+  `host/tracefile.py` implements this rule for every tool.

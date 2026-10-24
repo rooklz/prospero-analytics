@@ -7,20 +7,13 @@ surface does this program actually touch?"
 """
 import argparse
 import collections
-import json
 import sys
+
+import tracefile
 
 def load(paths):
     for path in paths:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    yield json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+        yield from tracefile.events(path)
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
@@ -40,7 +33,7 @@ def main():
             first_seen.setdefault(key, ev.get("seq", 0))
             calls += 1
         elif t == "drops":
-            drops += int(ev.get("n", 0))
+            drops += ev.get("n", 0)
 
     print(f"{calls} calls, {len(counts)} unique functions, {drops} dropped\n")
     print(f"{'count':>8}  {'first seq':>10}  function")
@@ -49,7 +42,7 @@ def main():
 
     unknown = sum(n for k, n in counts.items() if k.split(".", 1)[1].startswith("nid_"))
     if unknown:
-        print(f"\nnote: {unknown} calls hit unnamed NIDs — extend data/nids.txt", file=sys.stderr)
+        print(f"\nnote: {unknown} calls hit unnamed NIDs — extend agent/data/nids.txt in ProsperoTrace", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
