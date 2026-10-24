@@ -1,5 +1,9 @@
 # prospero-analytics
 
+[![tests](https://github.com/rooklz/prospero-analytics/actions/workflows/tests.yml/badge.svg)](https://github.com/rooklz/prospero-analytics/actions/workflows/tests.yml)
+[![python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](#)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Host-side tooling and analysis for **ProsperoTrace** captures — the
 on-console tracer lives in [rooklz/ProsperoTrace](https://github.com/rooklz/ProsperoTrace).
 
