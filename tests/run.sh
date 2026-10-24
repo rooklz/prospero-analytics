@@ -6,7 +6,9 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-"$ROOT/tests/tracediff_smoke.sh" > "$WORK/out" || { cat "$WORK/out"; exit 1; }
+for t in tracediff_smoke.sh malformed_smoke.sh receiver_smoke.py; do
+    "$ROOT/tests/$t" > "$WORK/out" 2>&1 || { cat "$WORK/out"; exit 1; }
+done
 rm -f "$WORK/out"
 
 echo "all tests passed"

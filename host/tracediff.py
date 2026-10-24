@@ -19,27 +19,21 @@ import collections
 import json
 import sys
 
+import tracefile
+
 def load(path):
     counts = collections.Counter()
     first = {}
     totals = {"calls": 0, "drops": 0}
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                ev = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            t = ev.get("type")
-            if t == "call":
-                key = (ev.get("mod", "?"), ev.get("fn", "?"))
-                counts[key] += 1
-                first.setdefault(key, ev.get("seq", 0))
-                totals["calls"] += 1
-            elif t == "drops":
-                totals["drops"] += int(ev.get("n", 0))
+    for ev in tracefile.events(path):
+        t = ev.get("type")
+        if t == "call":
+            key = (ev.get("mod", "?"), ev.get("fn", "?"))
+            counts[key] += 1
+            first.setdefault(key, ev.get("seq", 0))
+            totals["calls"] += 1
+        elif t == "drops":
+            totals["drops"] += ev.get("n", 0)
     return counts, first, totals
 
 def fmt_key(k):
