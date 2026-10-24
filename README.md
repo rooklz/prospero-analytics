@@ -1,3 +1,5 @@
+<!-- ARCHIVED: the ProsperoTrace host stack now lives in [rooklz/ProsperoTrace](https://github.com/rooklz/ProsperoTrace) under `analytics/`. This standalone repository is kept for history and is no longer developed. -->
+
 # prospero-analytics
 
 [![tests](https://github.com/rooklz/prospero-analytics/actions/workflows/tests.yml/badge.svg)](https://github.com/rooklz/prospero-analytics/actions/workflows/tests.yml)
