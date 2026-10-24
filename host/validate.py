@@ -44,6 +44,7 @@ def check_call(ev):
 
 def validate(path, limit=20):
     problems, counts, last_seq = [], {"hello": 0, "call": 0, "drops": 0, "other": 0}, -1
+    first = True
     with open(path, encoding="utf-8", errors="replace") as f:
         for n, line in enumerate(f, 1):
             if not line.strip():
@@ -54,8 +55,9 @@ def validate(path, limit=20):
                 continue
             t = ev.get("type")
             counts[t if t in counts else "other"] += 1
-            if n == 1 and t != "hello":
+            if first and t != "hello":
                 problems.append((n, "first record is not hello"))
+            first = False
             if t == "hello":
                 if not _count(ev.get("pid")):
                     problems.append((n, "hello pid missing"))
