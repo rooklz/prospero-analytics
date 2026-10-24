@@ -16,6 +16,7 @@ kernel-facing code — pure data engineering on trace output.
 | `host/summarize.py` | Per-capture aggregation: call counts per function, first-seen order, drop totals |
 | `host/tracediff.py` | Compare two captures: functions that surfaced, disappeared, or changed rate |
 | `host/tracedb.py` | Import many captures into one SQLite database; query who calls what across runs |
+| `host/dashboard.py` | Static HTML report from a database: per-run timelines, capture x module matrix |
 
 ## Quickstart
 
@@ -24,18 +25,26 @@ python3 host/receiver.py --port 9029 --out traces/
 python3 host/summarize.py traces/trace-1234-*.jsonl
 python3 host/tracediff.py traces/before.jsonl traces/after.jsonl
 python3 host/tracediff.py traces/before.jsonl traces/after.jsonl --json diff.json
+python3 host/tracediff.py traces/short.jsonl traces/long.jsonl --normalize   # per-1000-call rates
+python3 host/summarize.py traces/trace-1234-*.jsonl --json summary.json
 
 python3 host/tracedb.py import traces.db traces/*.jsonl     # idempotent; re-run as traces/ grows
 python3 host/tracedb.py captures traces.db
 python3 host/tracedb.py functions traces.db --top 30
 python3 host/tracedb.py who traces.db 'sceKernel*'           # fn or mod.fn, glob patterns
+python3 host/tracedb.py common traces.db                     # functions every capture calls
+python3 host/tracedb.py fwdiff traces.db 13.40 14.10         # called on one firmware, never the other
+python3 host/tracedb.py coverage traces.db ../ProsperoTrace/agent/data/nids.txt [--missing]
+python3 host/tracedb.py args traces.db sceKernelOpen         # per-slot distinct values, ranges, top values
 python3 host/tracedb.py sql traces.db "SELECT fw, count(*) FROM captures GROUP BY fw"
+
+python3 host/dashboard.py traces.db -o report.html           # self-contained page, no scripts
 ```
 
 `tracedb` stores `captures` (hello metadata, totals), `calls` (one row per
 call, args in `a0`..`a5` as hex text), `drops`, and a `functions` view. The
-`sql` command is read-only. For example, functions the 14.10 runs call that
-no 13.40 run does:
+`sql` command is read-only. `fwdiff` is a canned form of this query, which
+lists functions the 14.10 runs call that no 13.40 run does:
 
 ```sql
 SELECT DISTINCT k.mod, k.fn FROM calls k JOIN captures c ON c.id = k.capture_id WHERE c.fw = '14.10'
@@ -51,16 +60,18 @@ tests/run.sh
 
 Drives smoke checks against synthetic captures: `tracediff` output, malformed-line
 tolerance in `summarize`/`tracediff`, the receiver over loopback, and
-`tracedb` import plus queries.
+`tracedb` import plus every report, the dashboard, and the `--json` /
+`--normalize` flags. GitHub Actions runs them on Linux and macOS with
+Python 3.10 and 3.14.
 
-## Roadmap
+## Status
 
-- Query layer on top of `tracedb`: canned cross-capture reports (common
-  surface, per-firmware diffs) beyond the raw `sql` command
-- Web dashboard: per-run timelines, module dependency graphs
-- NID coverage visualization (which known functions did this run touch)
-- Arg-pattern clustering (callers, value ranges, threading behavior)
-- CI fixtures: regenerate captures on a fixture console and diff
+The original roadmap is done: SQLite import and query layer (`tracedb`),
+dashboard (`dashboard.py`), NID coverage (`tracedb coverage`), arg-pattern
+analysis (`tracedb args`), and CI. One piece needs hardware and stays
+manual: regenerating fixture captures on a console. Capture with
+`receiver.py`, then compare against a stored baseline with
+`tracediff --normalize` or `tracedb fwdiff`.
 
 The output of these tools is the ground-truth dataset behind
 firmware-compatibility questions (e.g. which API surface a newer title

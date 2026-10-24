@@ -47,6 +47,9 @@ def main():
     ap.add_argument("--json", metavar="FILE", default=None,
                     help="also write the structured diff (use - for stdout)")
     ap.add_argument("--top", type=int, default=20, help="rows in the changed-rate list")
+    ap.add_argument("--normalize", action="store_true",
+                    help="compare calls per 1000 calls instead of raw counts, so captures of "
+                         "different length only show functions whose share really moved")
     args = ap.parse_args()
 
     b_count, b_first, b_tot = load(args.base)
@@ -63,9 +66,16 @@ def main():
         else:
             both.append(k)
 
-    changed = sorted(
-        (k for k in both if b_count[k] != n_count[k]),
-        key=lambda k: abs(n_count[k] - b_count[k]), reverse=True)
+    def per_k(count, tot, k):
+        return 1000 * count.get(k, 0) / tot["calls"] if tot["calls"] else 0.0
+    if args.normalize:
+        delta = {k: per_k(n_count, n_tot, k) - per_k(b_count, b_tot, k) for k in both}
+        changed = sorted((k for k in both if round(delta[k], 1)),
+                         key=lambda k: abs(delta[k]), reverse=True)
+    else:
+        changed = sorted(
+            (k for k in both if b_count[k] != n_count[k]),
+            key=lambda k: abs(n_count[k] - b_count[k]), reverse=True)
 
     print(f"base: {b_tot['calls']} calls, {len(b_count)} unique, {b_tot['drops']} dropped")
     print(f"new:  {n_tot['calls']} calls, {len(n_count)} unique, {n_tot['drops']} dropped")
@@ -84,10 +94,15 @@ def main():
         print()
 
     if changed:
-        print(f"rate changes (top {args.top} by |delta|):")
+        unit = " per 1000 calls" if args.normalize else ""
+        print(f"rate changes{unit} (top {args.top} by |delta|):")
         for k in changed[:args.top]:
-            d = n_count[k] - b_count[k]
-            print(f"  {fmt_key(k):<44} {b_count[k]:>8} -> {n_count[k]:<8} ({d:+d})")
+            if args.normalize:
+                b, n = per_k(b_count, b_tot, k), per_k(n_count, n_tot, k)
+                print(f"  {fmt_key(k):<44} {b:>8.1f} -> {n:<8.1f} ({n - b:+.1f})")
+            else:
+                d = n_count[k] - b_count[k]
+                print(f"  {fmt_key(k):<44} {b_count[k]:>8} -> {n_count[k]:<8} ({d:+d})")
         print()
 
     if args.json:
@@ -97,7 +112,9 @@ def main():
             "surfaced": [{"mod": k[0], "fn": k[1], "count": n_count[k]} for k in only_new],
             "gone": [{"mod": k[0], "fn": k[1], "count": b_count[k]} for k in only_base],
             "changed": [{"mod": k[0], "fn": k[1], "base": b_count[k], "new": n_count[k],
-                         "delta": n_count[k] - b_count[k]} for k in changed],
+                         "delta": n_count[k] - b_count[k],
+                         "base_per_1000": round(per_k(b_count, b_tot, k), 3),
+                         "new_per_1000": round(per_k(n_count, n_tot, k), 3)} for k in changed],
         }
         text = json.dumps(out, indent=2)
         if args.json == "-":

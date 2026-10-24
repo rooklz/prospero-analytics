@@ -35,6 +35,7 @@ dependencies.
 - Add (or extend) a smoke test under `tests/` for every new tool; wire it
   into `tests/run.sh`.
 - Every CLI tool needs an example in the README quickstart.
+- Shared parsing lives in `host/tracefile.py`; read captures through it.
 
 ## Tests
 
